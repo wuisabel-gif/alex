@@ -1,5 +1,7 @@
 require_relative "alex/version"
 require_relative "alex/config"
+require_relative "alex/instructions"
+require_relative "alex/divergence"
 require_relative "alex/session_store"
 require_relative "alex/approval"
 require_relative "alex/tool"

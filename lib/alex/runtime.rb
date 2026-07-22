@@ -4,8 +4,8 @@ module Alex
   class Runtime
     attr_reader :session
 
-    def initialize(agent:, session:, provider:, approval:, output: $stdout)
-      @agent, @session, @provider, @approval, @output = agent, session, provider, approval, output
+    def initialize(agent:, session:, provider:, approval:, output: $stdout, style: nil)
+      @agent, @session, @provider, @approval, @output, @style = agent, session, provider, approval, output, style
     end
 
     def run(prompt)
@@ -14,7 +14,7 @@ module Alex
       loop do
         turns += 1
         raise "maximum agent turns (#{@agent.max_turns}) exceeded" if turns > @agent.max_turns
-        response = @provider.complete(messages: @session.messages, system: @agent.system,
+        response = @provider.complete(messages: @session.messages, system: Instructions.system(agent: @agent, plugin: @agent.plugin_system, style: Divergence.instruction(@style)),
                                       tools: @agent.tools.values.map(&:provider_schema),
                                       temperature: 0.2, max_tokens: 2000)
         response.tool_calls.each do |call|
@@ -41,9 +41,9 @@ module Alex
         return
       end
       result = tool.call(args)
-      @session.messages << { "role" => "user", "content" => JSON.generate(tool_result: { name: name, result: result }) }
+      @session.messages << { "role" => "user", "content" => Instructions.untrusted("tool_output", JSON.generate(tool_result: { name: name, result: result })) }
     rescue StandardError => e
-      @session.messages << { "role" => "user", "content" => JSON.generate(tool_error: { name: name, error: e.message }) }
+      @session.messages << { "role" => "user", "content" => Instructions.untrusted("tool_error", JSON.generate(tool_error: { name: name, error: e.message })) }
     end
   end
 end

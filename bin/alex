@@ -2,15 +2,16 @@
 require "optparse"
 require_relative "../lib/alex"
 
-opts = { agent: "default", provider: nil, model: nil, approval: nil, session: nil, cwd: Dir.pwd }
+opts = { agent: "default", provider: nil, model: nil, approval: nil, session: nil, cwd: Dir.pwd, style: nil, versions: 5 }
 parser = OptionParser.new do |o|
-  o.banner = "Usage: alex run PROMPT [options] | alex session list | alex doctor"
+o.banner = "Usage: alex run PROMPT [options] | alex brainstorm PROMPT [options] | alex session list | alex doctor"
   o.on("--agent NAME", "Agent definition (default, clockwork-orange)") { |value| opts[:agent] = value }
   o.on("--provider NAME", "Provider (echo or anthropic)") { |value| opts[:provider] = value }
   o.on("--model NAME", "Model identifier") { |value| opts[:model] = value }
   o.on("--approval MODE", "Tool policy: always, ask, or never") { |value| opts[:approval] = value }
   o.on("--session ID", "Resume a session") { |value| opts[:session] = value }
-  o.on("--cwd DIR", "Working directory for tools (default: current directory)") { |value| opts[:cwd] = File.expand_path(value) }
+  o.on("--style NAME", "Communication style (adaptive, practical, contrarian, visual, systems, playful, skeptical)") { |value| opts[:style] = value }
+  o.on("--versions N", Integer, "Number of divergent responses for brainstorm (default: 5)") { |value| opts[:versions] = value }
   o.on("-h", "--help", "Show help") { puts o; exit }
 end
 begin
@@ -41,6 +42,26 @@ when "doctor"
   puts "Working directory: #{File.expand_path(opts[:cwd])}"
   puts "Provider: #{opts[:provider] || config["provider"]}"
   puts "Clockwork Orange: #{Alex::Plugins::ClockworkOrange.available? ? "available" : "not configured (set CLOCKWORK_ORANGE_PATH)"}"
+when "brainstorm"
+  prompt = ARGV.join(" ")
+  abort "Usage: alex brainstorm PROMPT" if prompt.strip.empty?
+  abort "--versions must be between 2 and 6" unless opts[:versions].between?(2, 6)
+  provider_name = opts[:provider] || config["provider"]
+  model = opts[:model] || config["model"]
+  approval_mode = opts[:approval] || config["approval"]
+  Dir.chdir(opts[:cwd]) do
+    agent = Alex::Agents.build(opts[:agent], config)
+    assignments = Alex::Divergence.assignments(opts[:versions])
+    assignments.each_with_index do |(style, _instruction), index|
+      session = store.create(agent: agent.name)
+      runtime = Alex::Runtime.new(agent: agent, session: session,
+                                  provider: Alex::Provider.build(provider_name, model: model),
+                                  approval: Alex::Approval.new(mode: approval_mode), style: style)
+      answer = runtime.run(prompt) { |updated| store.save(updated) }
+      puts "\n=== Perspective #{index + 1}: #{style} ===\n#{answer}"
+      warn "session (#{style}): #{session.id}"
+    end
+  end
 when "run"
   prompt = ARGV.join(" ")
   prompt = $stdin.read if prompt.empty? && !$stdin.tty?
@@ -54,7 +75,7 @@ when "run"
     session = opts[:session] ? store.load(opts[:session]) : store.create(agent: agent.name)
     runtime = Alex::Runtime.new(agent: agent, session: session,
                                 provider: Alex::Provider.build(provider_name, model: model),
-                                approval: Alex::Approval.new(mode: approval_mode))
+                                approval: Alex::Approval.new(mode: approval_mode), style: opts[:style])
     answer = runtime.run(prompt) { |updated| store.save(updated) }
     puts answer
     warn "session: #{session.id}"
