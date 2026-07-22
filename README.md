@@ -3,7 +3,7 @@
 A general-purpose agent harness for models, tools, subagents, and approvals.
 
 Alex is intended to provide the reusable orchestration layer for agentic
-workflows, while specialized behaviors—such as Clockwork Orange's forced-
+workflows, while specialized behaviors—such as [Clockwork Orange](https://github.com/wuisabel-gif/clockwork-orange)'s forced-
 divergence rerolls—can live in plugins or integrations.
 
 ## Quick start
@@ -34,7 +34,7 @@ only in a trusted environment.
 - `Alex::SessionStore` — local JSON session persistence and resume
 - `Alex::Approval` — explicit tool approval policy
 - `Alex::Agents` — named agent definitions
-- `Alex::Plugins::ClockworkOrange` — integration boundary for forced divergence
+- `Alex::Plugins::ClockworkOrange` — integration boundary for [Clockwork Orange](https://github.com/wuisabel-gif/clockwork-orange)
 
 ## Planned capabilities
 
