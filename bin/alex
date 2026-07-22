@@ -1,0 +1,64 @@
+#!/usr/bin/env ruby
+require "optparse"
+require_relative "../lib/alex"
+
+opts = { agent: "default", provider: nil, model: nil, approval: nil, session: nil, cwd: Dir.pwd }
+parser = OptionParser.new do |o|
+  o.banner = "Usage: alex run PROMPT [options] | alex session list | alex doctor"
+  o.on("--agent NAME", "Agent definition (default, clockwork-orange)") { |value| opts[:agent] = value }
+  o.on("--provider NAME", "Provider (echo or anthropic)") { |value| opts[:provider] = value }
+  o.on("--model NAME", "Model identifier") { |value| opts[:model] = value }
+  o.on("--approval MODE", "Tool policy: always, ask, or never") { |value| opts[:approval] = value }
+  o.on("--session ID", "Resume a session") { |value| opts[:session] = value }
+  o.on("--cwd DIR", "Working directory for tools (default: current directory)") { |value| opts[:cwd] = File.expand_path(value) }
+  o.on("-h", "--help", "Show help") { puts o; exit }
+end
+begin
+  parser.parse!
+rescue OptionParser::ParseError => e
+  abort "#{e.message}\nTry --help for usage."
+end
+
+command = ARGV.shift
+config = Alex::Config.load
+store = Alex::SessionStore.new
+
+case command
+when "init"
+  path = config.save
+  puts "Created #{path}"
+when "session"
+  subcommand = ARGV.shift
+  abort "Usage: alex session list" unless subcommand == "list"
+  sessions = store.list
+  if sessions.empty?
+    puts "No Alex sessions yet."
+  else
+    sessions.each { |s| puts "#{s.id}  #{s.updated_at}  #{s.agent}  #{s.messages.length} messages" }
+  end
+when "doctor"
+  puts "Alex #{Alex::VERSION}"
+  puts "Working directory: #{File.expand_path(opts[:cwd])}"
+  puts "Provider: #{opts[:provider] || config["provider"]}"
+  puts "Clockwork Orange: #{Alex::Plugins::ClockworkOrange.available? ? "available" : "not configured (set CLOCKWORK_ORANGE_PATH)"}"
+when "run"
+  prompt = ARGV.join(" ")
+  prompt = $stdin.read if prompt.empty? && !$stdin.tty?
+  abort "Usage: alex run PROMPT" if prompt.to_s.strip.empty?
+  provider_name = opts[:provider] || config["provider"]
+  model = opts[:model] || config["model"]
+  approval_mode = opts[:approval] || config["approval"]
+  Dir.chdir(opts[:cwd]) do
+    agent = Alex::Agents.build(opts[:agent], config)
+    agent.provider, agent.model = provider_name, model
+    session = opts[:session] ? store.load(opts[:session]) : store.create(agent: agent.name)
+    runtime = Alex::Runtime.new(agent: agent, session: session,
+                                provider: Alex::Provider.build(provider_name, model: model),
+                                approval: Alex::Approval.new(mode: approval_mode))
+    answer = runtime.run(prompt) { |updated| store.save(updated) }
+    puts answer
+    warn "session: #{session.id}"
+  end
+else
+  abort parser.to_s
+end
